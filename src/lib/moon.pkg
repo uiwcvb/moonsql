@@ -1,0 +1,4 @@
+import {
+  "moonbitlang/x/fs",
+  "moonbitlang/core/encoding/utf8" @encoding_utf8,
+}

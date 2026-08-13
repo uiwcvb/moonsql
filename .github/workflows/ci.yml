@@ -1,0 +1,14 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonbitlang/setup-action@v1
+      - run: moon check --deny-warn
+      - run: moon test
+      - run: moon check --target wasm
+      - run: moon package --list
