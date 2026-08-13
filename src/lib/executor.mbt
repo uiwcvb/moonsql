@@ -17,7 +17,7 @@ pub struct Connection {
 pub fn open(path : String) -> Connection {
   let db : Connection = {
     path,
-    tables: {},
+    tables: Map([]),
     closed: false,
     dirty: false,
     storage_error: None,
