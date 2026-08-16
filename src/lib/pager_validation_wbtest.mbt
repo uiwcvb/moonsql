@@ -227,3 +227,44 @@ test "checksum accepts untouched image" {
   let bytes = encode_database(fixture().tables).unwrap()
   assert_true(validate_page_image(bytes).valid)
 }
+
+///|
+test "checksum rejects truncated tail" {
+  let bytes = encode_database(fixture().tables).unwrap().to_array()
+  let n = bytes.length()
+  let cut = Bytes::makei(n - 2, fn(i) { bytes[i] })
+  assert_true(decode_database(cut) is Err(_))
+}
+
+///|
+test "checksum rejects zeroed superblock tail" {
+  let bytes = encode_database(fixture().tables).unwrap().to_array()
+  bytes[PAGE_SIZE - 1] = (0 : Int).to_byte()
+  bytes[PAGE_SIZE - 2] = (0 : Int).to_byte()
+  assert_true(decode_database(Bytes::from_array(bytes)) is Err(_))
+}
+
+///|
+test "recovery rejects bit flips across pages" {
+  let bytes = encode_database(fixture().tables).unwrap().to_array()
+  for page = 0; page < bytes.length() / PAGE_SIZE; page = page + 1 {
+    let damaged = bytes.copy()
+    let at = page * PAGE_SIZE + 64
+    damaged[at] = (damaged[at].to_int() ^ 0x10).to_byte()
+    assert_true(decode_database(Bytes::from_array(damaged)) is Err(_))
+  }
+}
+
+///|
+test "open reports checksum failure from disk" {
+  let bytes = encode_database(fixture().tables).unwrap()
+  let tmp = "/tmp/moonsql-crash-" + "fixed" + ".mdb"
+  @fs.write_bytes_to_file(tmp, bytes) catch { _ => fail("write failed") }
+  let damaged = @fs.read_file_to_bytes(tmp) catch { _ => fail("read failed") }
+  let arr = damaged.to_array()
+  arr[100] = (arr[100].to_int() ^ 0x40).to_byte()
+  @fs.write_bytes_to_file(tmp, Bytes::from_array(arr)) catch { _ => fail("write failed") }
+  let db = open(tmp)
+  assert_true(db.storage_error is Some(_))
+  // ponytail: /tmp residue is harmless; @fs.remove is async-only
+}
