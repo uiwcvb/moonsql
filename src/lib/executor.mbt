@@ -448,6 +448,45 @@ pub fn Connection::schema(self : Connection, name : String) -> String? {
 }
 
 ///|
+/// Render the whole database as replayable SQL: CREATE TABLE per schema
+/// followed by one INSERT per stored row, in row order.
+pub fn Connection::dump(self : Connection) -> Result[String, SqlError] {
+  let b = StringBuilder::new()
+  for name in self.table_names() {
+    b.write_string(match self.schema(name) {
+      Some(sql) => sql
+      None => continue
+    })
+    b.write_char('\n')
+    let result = match self.execute("SELECT * FROM " + name) {
+      Ok(r) => r
+      Err(e) => return Err(e)
+    }
+    for row in result.rows {
+      b.write_string("INSERT INTO " + name + " VALUES (")
+      for i = 0; i < row.length(); i = i + 1 {
+        if i > 0 {
+          b.write_string(", ")
+        }
+        b.write_string(dump_value(row[i]))
+      }
+      b.write_string(");\n")
+    }
+  }
+  Ok(b.to_string())
+}
+
+///|
+fn dump_value(v : Value) -> String {
+  match v {
+    Null => "NULL"
+    Integer(n) => n.to_string()
+    Real(x) => x.to_string()
+    Text(s) => "'" + s.replace(old="'", new="''") + "'"
+  }
+}
+
+///|
 pub fn Connection::run_line(
   self : Connection,
   line : String,
@@ -455,11 +494,14 @@ pub fn Connection::run_line(
   let input = line.trim().to_owned()
   if input == ".help" {
     return Ok(
-      ".tables\n.schema TABLE\n.ast SQL\n.version\n.quit\n.exit",
+      ".tables\n.schema [TABLE]\n.ast SQL\n.dump\n.version\n.quit\n.exit",
     )
   }
   if input == ".version" {
     return Ok("moonsql " + version())
+  }
+  if input == ".dump" {
+    return self.dump()
   }
   if input == ".tables" {
     return Ok(self.table_names().join("\n"))

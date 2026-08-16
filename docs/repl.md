@@ -1,10 +1,11 @@
 # REPL contract
 
-Prompt: `moonsql> `. SQL accumulates until a semicolon outside a string. Results print a header and pipe-separated values. Errors use `error:line:column: message`.
+Prompt: `moonsql> ` (continuation `   ...> `). SQL accumulates until a semicolon outside a string; a trailing line at EOF still runs. Results print a header and pipe-separated values. Errors use `error:line:column: message`.
 
 - `.tables` calls `Connection::table_names`.
-- `.schema NAME` calls `Connection::schema`.
+- `.schema NAME` calls `Connection::schema`; `.schema` alone lists every table.
 - `.ast SQL` calls `debug_ast`.
+- `.dump` renders the whole database as replayable SQL.
 - `.version` prints the engine version.
 - `.help` prints grammar and dot commands.
 - `.quit` and `.exit` close the connection.

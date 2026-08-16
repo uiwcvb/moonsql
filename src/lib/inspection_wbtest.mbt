@@ -213,3 +213,27 @@ test "dot schema without args lists all tables" {
   assert_false(db.run_line(".schema").unwrap().contains("CREATE TABLE c"))
   db.close()
 }
+
+///|
+test "dump replays to an identical database" {
+  let db = open(":memory:")
+  ignore(db.execute("CREATE TABLE t (id INTEGER, name TEXT, score REAL)"))
+  ignore(db.execute("INSERT INTO t VALUES (1, 'a''b', 1.5), (2, NULL, 2)"))
+  let sql = db.run_line(".dump").unwrap()
+  assert_true(sql.contains("CREATE TABLE t (id INTEGER, name TEXT, score REAL);"))
+  assert_true(sql.contains("INSERT INTO t VALUES (1, 'a''b', 1.5);"))
+  assert_true(sql.contains("INSERT INTO t VALUES (2, NULL, 2);"))
+  // replay into a fresh connection must reproduce the same rows
+  let db2 = open(":memory:")
+  for stmt in sql.split("\n") {
+    let s = stmt.trim().to_owned()
+    if s.length() > 0 {
+      assert_true(db2.execute(s) is Ok(_))
+    }
+  }
+  let out = db2.execute("SELECT * FROM t ORDER BY id").unwrap()
+  assert_eq(out.rows.length(), 2)
+  assert_eq(out.rows[0][1].to_sql(), "a'b")
+  db.close()
+  db2.close()
+}
