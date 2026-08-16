@@ -188,3 +188,28 @@ test "resolve_args rejects unknown and dangling --file" {
   assert_true(resolve_args(["moonsql", "--wat"]) is Err(_))
   assert_true(resolve_args(["moonsql", "--file"]) is Err(_))
 }
+
+///|
+test "sql_ready detects terminator outside strings" {
+  assert_false(sql_ready(""))
+  assert_false(sql_ready("SELECT 1"))
+  assert_true(sql_ready("SELECT 1;"))
+  assert_true(sql_ready("SELECT 1;\n"))
+  assert_false(sql_ready("SELECT 1; SELECT 2"))
+  assert_true(sql_ready("SELECT 1; SELECT 2;"))
+  assert_false(sql_ready("SELECT 'a;b'"))
+  assert_true(sql_ready("SELECT 'a;b';"))
+  assert_true(sql_ready("SELECT\n  1;"))
+}
+
+///|
+test "dot schema without args lists all tables" {
+  let db = open(":memory:")
+  ignore(db.execute("CREATE TABLE a (x INTEGER)"))
+  ignore(db.execute("CREATE TABLE b (y TEXT)"))
+  let out = db.run_line(".schema").unwrap()
+  assert_true(out.contains("CREATE TABLE a"))
+  assert_true(out.contains("CREATE TABLE b"))
+  assert_false(db.run_line(".schema").unwrap().contains("CREATE TABLE c"))
+  db.close()
+}

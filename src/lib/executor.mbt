@@ -30,6 +30,34 @@ pub fn resolve_args(args : Array[String]) -> Result[String, String] {
 }
 
 ///|
+/// True when the SQL buffer ends with a semicolon outside a string literal.
+/// Used by the REPL to decide when a multi-line statement is ready to run.
+pub fn sql_ready(sql : String) -> Bool {
+  let mut last = 0
+  let mut in_string = false
+  let mut i = 0
+  while i < sql.length() {
+    let ch = sql[i]
+    if ch.to_int() == ('"' : Int) {
+      in_string = !in_string
+    } else if ch.to_int() == (';' : Int) && !in_string {
+      last = i + 1
+    }
+    i = i + 1
+  }
+  if last == 0 {
+    return false
+  }
+  let tail = sql[last:]
+  for ch in tail {
+    if ch.to_int() > 32 {
+      return false
+    }
+  }
+  return true
+}
+
+///|
 struct Table {
   columns : Array[Column]
   rows : BTree
@@ -439,6 +467,17 @@ pub fn Connection::run_line(
   if input == ".quit" || input == ".exit" {
     self.close()
     return Ok("bye")
+  }
+  if input == ".schema" {
+    let names = self.table_names()
+    if names.length() == 0 {
+      return Ok("(no tables)")
+    }
+    return Ok(
+      names
+      .map(fn(name) { self.schema(name).unwrap_or("") })
+      .join("\n"),
+    )
   }
   if input.length() >= 7 && input[:7] == ".schema" {
     let name = input[7:].to_owned().trim().to_owned()

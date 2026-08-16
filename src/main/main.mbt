@@ -1,25 +1,50 @@
 ///|
 async fn repl(db : @lib.Connection) -> Unit {
   println("moonsql " + @lib.version() + " - pure MoonBit embedded SQL")
-  println("Enter SQL or .help; terminate SQL with an optional semicolon.")
+  println("Enter SQL or .help; terminate SQL with a semicolon.")
+  let mut pending = ""
   while true {
-    @stdio.stdout.write("moonsql> ")
+    @stdio.stdout.write(if pending.length() == 0 { "moonsql> " } else { "   ...> " })
     match @stdio.stdin.read_until("\n") {
-      None => break
+      None => {
+        // EOF: run whatever was left, like a statement without a trailing `;`.
+        if pending.length() > 0 {
+          match db.run_line(pending.trim().to_owned()) {
+            Ok(output) => println(output)
+            Err(error) =>
+              println("error:\{error.line}:\{error.column}: \{error.message}")
+          }
+        }
+        break
+      }
       Some(raw) => {
         let line = raw.trim().to_owned()
         if line.length() == 0 {
           continue
         }
-        match db.run_line(line) {
-          Ok(output) => {
-            println(output)
-            if line == ".quit" || line == ".exit" {
-              break
+        if line[0] == ('.' : Byte) {
+          // dot commands act immediately and flush any pending buffer
+          pending = ""
+          match db.run_line(line) {
+            Ok(output) => {
+              println(output)
+              if line == ".quit" || line == ".exit" {
+                break
+              }
             }
+            Err(error) =>
+              println("error:\{error.line}:\{error.column}: \{error.message}")
           }
-          Err(error) =>
-            println("error:\{error.line}:\{error.column}: \{error.message}")
+        } else {
+          pending = pending + line + " "
+          if @lib.sql_ready(pending) {
+            match db.run_line(pending.trim().to_owned()) {
+              Ok(output) => println(output)
+              Err(error) =>
+                println("error:\{error.line}:\{error.column}: \{error.message}")
+            }
+            pending = ""
+          }
         }
       }
     }
