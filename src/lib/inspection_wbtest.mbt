@@ -173,3 +173,18 @@ test "page size is exactly 4096" {
   let bytes = encode_database(Map([])).unwrap()
   assert_eq(bytes.length(), 8192)
 }
+///|
+test "resolve_args defaults to moonsql.mdb" {
+  assert_eq(resolve_args(["moonsql"]), Ok("moonsql.mdb"))
+}
+
+///|
+test "resolve_args accepts --file" {
+  assert_eq(resolve_args(["moonsql", "--file", "data.db"]), Ok("data.db"))
+}
+
+///|
+test "resolve_args rejects unknown and dangling --file" {
+  assert_true(resolve_args(["moonsql", "--wat"]) is Err(_))
+  assert_true(resolve_args(["moonsql", "--file"]) is Err(_))
+}

@@ -1,4 +1,35 @@
 ///|
+/// Version of the moonsql engine, kept in sync with moon.mod's `version`.
+pub fn version() -> String {
+  "0.1.0"
+}
+
+///|
+/// Resolve the database path from CLI args. `Err("version")`/`Err("help")`
+/// request the banner, other errors are usage mistakes.
+pub fn resolve_args(args : Array[String]) -> Result[String, String] {
+  let mut path = "moonsql.mdb"
+  let mut i = 1
+  while i < args.length() {
+    match args[i] {
+      "--version" | "-v" => return Err("version")
+      "--help" | "-h" => return Err("help")
+      "--file" =>
+          if i + 1 < args.length() {
+            path = args[i + 1]
+            i = i + 1
+          } else {
+            return Err("missing path after --file")
+          }
+        ;
+      other => return Err("unknown argument: " + other)
+    }
+    i = i + 1
+  }
+  return Ok(path)
+}
+
+///|
 struct Table {
   columns : Array[Column]
   rows : BTree
@@ -395,7 +426,12 @@ pub fn Connection::run_line(
 ) -> Result[String, SqlError] {
   let input = line.trim().to_owned()
   if input == ".help" {
-    return Ok(".tables\n.schema TABLE\n.ast SQL\n.help\n.quit")
+    return Ok(
+      ".tables\n.schema TABLE\n.ast SQL\n.version\n.quit\n.exit",
+    )
+  }
+  if input == ".version" {
+    return Ok("moonsql " + version())
   }
   if input == ".tables" {
     return Ok(self.table_names().join("\n"))

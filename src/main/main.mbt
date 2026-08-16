@@ -1,6 +1,6 @@
 ///|
 async fn repl(db : @lib.Connection) -> Unit {
-  println("moonsql 0.1.0 — pure MoonBit embedded SQL")
+  println("moonsql " + @lib.version() + " - pure MoonBit embedded SQL")
   println("Enter SQL or .help; terminate SQL with an optional semicolon.")
   while true {
     @stdio.stdout.write("moonsql> ")
@@ -28,8 +28,25 @@ async fn repl(db : @lib.Connection) -> Unit {
 }
 
 ///|
+const VERSION : String = "0.1.0"
+
+///|
+const USAGE : String =
+  "usage: moonsql [--file PATH] [--version] [--help]\n" +
+  "  --file PATH   open (or create) the database file (default: moonsql.mdb)\n" +
+  "  --version     print the engine version and exit\n" +
+  "  --help        print this message and exit"
+
+///|
 async fn main {
   let args = @env.args()
-  let path = if args.length() > 1 { args[1] } else { "moonsql.mdb" }
-  repl(@lib.open(path))
+  match @lib.resolve_args(args) {
+    Err("version") => println("moonsql " + VERSION)
+    Err("help") => println(USAGE)
+    Err(message) => {
+      println("error: " + message)
+      println(USAGE)
+    }
+    Ok(path) => repl(@lib.open(path))
+  }
 }
