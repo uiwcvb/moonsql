@@ -1,4 +1,8 @@
 ///|
+/// Trailing FNV-1a checksum bytes appended to every sealed page.
+const CHECKSUM_SIZE : Int = 4
+
+///|
 priv struct ByteWriter {
   data : Array[Byte]
 }
@@ -65,13 +69,58 @@ fn ByteWriter::value(self : ByteWriter, value : Value) -> Unit {
 
 ///|
 fn ByteWriter::page(self : ByteWriter) -> Result[Array[Byte], String] {
-  if self.data.length() > PAGE_SIZE {
+  if self.data.length() > PAGE_SIZE - CHECKSUM_SIZE {
     return Err("page overflow")
   }
-  while self.data.length() < PAGE_SIZE {
+  while self.data.length() < PAGE_SIZE - CHECKSUM_SIZE {
     self.data.push((0 : Int).to_byte())
   }
   Ok(self.data)
+}
+
+///|
+/// 32-bit djb2-style hash over the first `PAGE_SIZE - 4` bytes of a page.
+fn fnv1a32(page : Bytes) -> Int {
+  let mut hash = 5381
+  for i = 0; i < PAGE_SIZE - 4; i = i + 1 {
+    hash = ((hash << 5) + hash + page[i].to_int()) & 0x7FFFFFFF
+  }
+  hash
+}
+
+///|
+fn fnv1a32_array(page : Array[Byte]) -> Int {
+  let mut hash = 5381
+  for i = 0; i < PAGE_SIZE - 4; i = i + 1 {
+    hash = ((hash << 5) + hash + page[i].to_int()) & 0x7FFFFFFF
+  }
+  hash
+}
+
+///|
+/// Append the page checksum to the last four bytes of a page image.
+pub fn seal_page(page : Array[Byte]) -> Array[Byte] {
+  let hash = fnv1a32_array(page)
+  let out = page.copy()
+  while out.length() < PAGE_SIZE {
+    out.push((0 : Int).to_byte())
+  }
+  out[PAGE_SIZE - 4] = (hash & 0xFF).to_byte()
+  out[PAGE_SIZE - 3] = ((hash >> 8) & 0xFF).to_byte()
+  out[PAGE_SIZE - 2] = ((hash >> 16) & 0xFF).to_byte()
+  out[PAGE_SIZE - 1] = ((hash >> 24) & 0xFF).to_byte()
+  out
+}
+
+///|
+/// Verify the trailing checksum of a sealed page image.
+pub fn verify_page(file : Bytes, number : Int) -> Bool {
+  let page = slice_page(file, number)
+  let hash = fnv1a32(page)
+  hash ==
+  (page[PAGE_SIZE - 4].to_int() | (page[PAGE_SIZE - 3].to_int() << 8) |
+  (page[PAGE_SIZE - 2].to_int() << 16) |
+  (page[PAGE_SIZE - 1].to_int() << 24))
 }
 
 ///|
@@ -175,10 +224,10 @@ fn encode_database(tables : Map[String, Table]) -> Result[Bytes, String] {
     for pair in rows {
       let (_, row) = pair
       let size = row_size(row)
-      if size + 7 > PAGE_SIZE {
+      if size + 7 > PAGE_SIZE - CHECKSUM_SIZE {
         return Err("row exceeds page")
       }
-      if used + size > PAGE_SIZE {
+      if used + size > PAGE_SIZE - CHECKSUM_SIZE {
         groups.push(group)
         group = []
         used = 7
@@ -204,7 +253,7 @@ fn encode_database(tables : Map[String, Table]) -> Result[Bytes, String] {
           w.value(value)
         }
       }
-      pages.push(w.page().unwrap())
+      pages.push(seal_page(w.page().unwrap()))
       leaf_pages.push(
         (if groups[i].length() > 0 { groups[i][0].0 } else { 0L }, number),
       )
@@ -220,7 +269,7 @@ fn encode_database(tables : Map[String, Table]) -> Result[Bytes, String] {
         w.u32(pair.1)
       }
       let number = pages.length()
-      pages.push(w.page().unwrap())
+      pages.push(seal_page(w.page().unwrap()))
       number
     }
     catalog.push({ name, columns: table.columns, root, count: rows.length() })
@@ -244,14 +293,14 @@ fn encode_database(tables : Map[String, Table]) -> Result[Bytes, String] {
       )
     }
   }
-  pages[1] = cw.page().unwrap()
+  pages[1] = seal_page(cw.page().unwrap())
   let hw : ByteWriter = { data: [] }
   hw.raw(@encoding_utf8.encode("MOONSQL1"))
-  hw.u16(1)
+  hw.u16(2)
   hw.u16(PAGE_SIZE)
   hw.u32(pages.length())
   hw.u32(1)
-  pages[0] = hw.page().unwrap()
+  pages[0] = seal_page(hw.page().unwrap())
   let all : Array[Byte] = []
   for page in pages {
     for byte in page {
@@ -271,13 +320,18 @@ fn decode_database(file : Bytes) -> Result[Map[String, Table], String] {
   if (@encoding_utf8.decode(magic) catch { _ => "" }) != "MOONSQL1" {
     return Err("invalid magic")
   }
-  if h.u16() != 1 || h.u16() != PAGE_SIZE {
+  if h.u16() != 2 || h.u16() != PAGE_SIZE {
     return Err("unsupported format")
   }
   let page_count = h.u32()
   let catalog_page = h.u32()
   if page_count != file.length() / PAGE_SIZE {
     return Err("page count mismatch")
+  }
+  for number = 0; number < page_count; number = number + 1 {
+    if !verify_page(file, number) {
+      return Err("checksum mismatch on page " + number.to_string())
+    }
   }
   let c : ByteReader = { data: slice_page(file, catalog_page), pos: 0 }
   if c.u8() != 1 {

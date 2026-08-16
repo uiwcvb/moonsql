@@ -2,7 +2,7 @@
 test "inspect empty superblock" {
   let bytes = encode_database(Map([])).unwrap()
   let header = inspect_superblock(bytes).unwrap()
-  assert_eq(header.version, 1)
+  assert_eq(header.version, 2)
   assert_eq(header.page_size, 4096)
   assert_eq(header.page_count, 2)
   assert_eq(header.catalog_page, 1)
@@ -46,7 +46,7 @@ test "validator rejects bad magic" {
 ///|
 test "validator rejects bad version" {
   let data = encode_database(Map([])).unwrap().to_array()
-  data[8] = (2 : Int).to_byte()
+  data[8] = (1 : Int).to_byte()
   assert_false(validate_page_image(Bytes::from_array(data)).valid)
 }
 
@@ -204,4 +204,26 @@ test "physical page count grows with rows" {
   }
   let large_pages = encode_database(tables).unwrap().length() / PAGE_SIZE
   assert_true(large_pages > small_pages)
+}
+
+///|
+test "checksum detects single corrupted byte" {
+  let bytes = encode_database(fixture().tables).unwrap().to_array()
+  let flipped = (bytes[100].to_int() ^ 0xFF).to_byte()
+  bytes[100] = flipped
+  assert_false(validate_page_image(Bytes::from_array(bytes)).valid)
+}
+
+///|
+test "checksum rejects bit flip in leaf data" {
+  let bytes = encode_database(fixture().tables).unwrap().to_array()
+  let leaf_byte = PAGE_SIZE * 2 + 50
+  bytes[leaf_byte] = (bytes[leaf_byte].to_int() ^ 0x01).to_byte()
+  assert_false(validate_page_image(Bytes::from_array(bytes)).valid)
+}
+
+///|
+test "checksum accepts untouched image" {
+  let bytes = encode_database(fixture().tables).unwrap()
+  assert_true(validate_page_image(bytes).valid)
 }

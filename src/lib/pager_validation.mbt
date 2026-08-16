@@ -48,7 +48,7 @@ pub fn validate_page_image(file : Bytes) -> ValidationResult {
     Err(message) => errors.push(message)
     Ok(header) => {
       pages_checked = pages_checked + 1
-      if header.version != 1 {
+      if header.version != 2 {
         errors.push("unsupported format version")
       }
       if header.page_size != PAGE_SIZE {
@@ -60,7 +60,15 @@ pub fn validate_page_image(file : Bytes) -> ValidationResult {
       if header.catalog_page <= 0 || header.catalog_page >= header.page_count {
         errors.push("catalog page is outside the file")
       }
-      for number = 1; number < header.page_count; number = number + 1 {
+      for number = 0; number < header.page_count; number = number + 1 {
+        if !verify_page(file, number) {
+          errors.push(
+            "page " + number.to_string() + " checksum mismatch",
+          )
+        }
+        if number == 0 {
+          continue
+        }
         let page = slice_page(file, number)
         let kind = page[0].to_int()
         pages_checked = pages_checked + 1
