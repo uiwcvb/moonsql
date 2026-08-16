@@ -8,7 +8,7 @@
 
 `moonsql` 是一个纯 MoonBit、零 FFI 的嵌入式关系型 SQL 引擎。核心执行器与 B+Tree 可编译到 WebAssembly；当前 `0.1.0` 同时提供内存执行路径、4096B 页式单文件持久化和原生交互式 REPL。
 
-> 状态说明：解析、类型检查、全语句执行、逻辑 B+Tree 和 `open/close` 二进制页恢复已实现。单文件由 4096B superblock、catalog/schema 页、B+Tree leaf/internal 页组成；当前没有 WAL/事务，进程在 `close` 前崩溃可能丢失本次会话。原生 CLI 直接读取 stdin；`.tables/.schema/.help/.ast` 也复用可嵌入宿主的 `run_line` dispatcher。
+> 状态说明：解析、类型检查、全语句执行、逻辑 B+Tree 和 `open/close` 二进制页恢复已实现。单文件由 4096B superblock、catalog/schema 页、B+Tree leaf/internal 页组成；每页带 32 位校验和，损坏文件在 `open` 时报 `storage_error` 而非静默坏数据。当前没有 WAL/事务，进程在 `close` 前崩溃可能丢失本次会话。原生 CLI 直接读取 stdin，支持 `--file/--version/--help`；`.tables/.schema/.ast/.version/.help/.quit` 复用可嵌入宿主的 `run_line` dispatcher。
 
 ## 快速上手
 
@@ -61,14 +61,15 @@ flowchart LR
 
 ## REPL 点命令设计
 
-`Connection::run_line` 支持 `.tables`、`.schema TABLE`、`.help`、`.ast SQL` 与 `.quit`。`src/main` 使用 `moonbitlang/async/stdio` 提供真正的 native stdin REPL；首个命令行参数是数据库文件路径，省略时使用 `moonsql.mdb`。
+`Connection::run_line` 支持 `.tables`、`.schema TABLE`、`.ast SQL`、`.version`、`.help`、`.quit` 与 `.exit`。`src/main` 使用 `moonbitlang/async/stdio` 提供真正的 native stdin REPL；`--file PATH` 指定数据库文件（默认 `moonsql.mdb`），`--version` 与 `--help` 打印信息后退出。
 
 ## Roadmap
 
 - [x] 单文件二进制页：superblock/catalog/schema/leaf/internal page
 - [ ] 原子临时文件替换与显式 fsync
-- [x] Native stdin REPL 与 `.tables/.schema/.help/.ast`
-- [ ] 页 free-list、校验和、崩溃测试
+- [x] Native stdin REPL 与 `.tables/.schema/.ast/.version/.help/.quit`
+- [x] 页校验和（format v2）与崩溃/损坏恢复测试
+- [x] CLI `--file/--version/--help`
 - [ ] 事务/WAL（预留升级路径）
 - [ ] JOIN、GROUP BY、子查询、CREATE INDEX、外键、并发
 
@@ -76,7 +77,7 @@ flowchart LR
 
 ## 测试与发布
 
-50 个命名单元测试覆盖 lexer、parser、错误语法和全语句执行。发布前：
+接近 200 个命名单元测试覆盖 lexer、parser、错误语法、全语句执行、格式校验与损坏恢复。发布前：
 
 ```bash
 moon check --deny-warn

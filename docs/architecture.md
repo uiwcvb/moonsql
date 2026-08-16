@@ -18,6 +18,6 @@
 
 ## Persistence
 
-The project intentionally has no `extern "c"`. `open(path)` validates and decodes a page-aligned binary image. `close()` encodes the catalog, schema, B+Tree internal pages, leaf pages and typed rows through `moonbitlang/x/fs`; `:memory:` performs no I/O. Atomic rename and explicit fsync remain necessary for crash safety.
+The project intentionally has no `extern "c"`. `open(path)` validates and decodes a page-aligned binary image (format v2: every 4096B page sealed with a 32-bit checksum, so corrupted files surface as `storage_error`). `close()` encodes the catalog, schema, B+Tree internal pages, leaf pages and typed rows through `moonbitlang/x/fs`; `:memory:` performs no I/O. Atomic rename and explicit fsync remain necessary for crash safety.
 
-Transaction upgrade path: reserve two superblock slots, add generation numbers and checksums, then implement copy-on-write dirty pages plus a WAL. This is deliberately a TODO rather than pretending the current single-writer design is transactional.
+Transaction upgrade path: reserve two superblock slots, add generation numbers, extend the checksum scheme, then implement copy-on-write dirty pages plus a WAL. This is deliberately a TODO rather than pretending the current single-writer design is transactional.

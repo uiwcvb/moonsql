@@ -5,6 +5,7 @@ Prompt: `moonsql> `. SQL accumulates until a semicolon outside a string. Results
 - `.tables` calls `Connection::table_names`.
 - `.schema NAME` calls `Connection::schema`.
 - `.ast SQL` calls `debug_ast`.
+- `.version` prints the engine version.
 - `.help` prints grammar and dot commands.
 - `.quit` and `.exit` close the connection.
 
